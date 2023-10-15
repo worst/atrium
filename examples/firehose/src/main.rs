@@ -5,7 +5,7 @@ use futures::StreamExt;
 use tokio_tungstenite::{connect_async, tungstenite};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (mut stream, _) =
         connect_async("wss://bsky.social/xrpc/com.atproto.sync.subscribeRepos").await?;
 
