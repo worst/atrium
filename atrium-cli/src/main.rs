@@ -1,6 +1,12 @@
+use atrium_api::client::AtpServiceClient;
 use atrium_api::com::atproto::repo::strong_ref::Main as StrongRef;
 use atrium_api::records::Record;
-use atrium_xrpc::XrpcReqwestClient;
+// use atrium_xrpc::XrpcClient;
+// use atrium_xrpc::XrpcReqwestClient;
+use atrium_api::xrpc::client::reqwest::ReqwestClient;
+// use atrium_xrpc::XrpcClient;
+// use atrium_xrpc::client::reqwest::ReqwestClient;
+
 use chrono::Utc;
 use clap::Parser;
 use serde::Serialize;
@@ -134,19 +140,35 @@ async fn run(
     command: Command,
     debug: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use atrium_api::com::atproto::server::create_session::{CreateSession, Input};
-    let mut client = XrpcReqwestClient::new(host);
+    // let client = ReqwestClient::new(host);
+    let xrpc_client = ReqwestClient::new(host.clone());
+    let client = AtpServiceClient::new(xrpc_client);
+    // use atrium_api::com::atproto::server::create_session::{CreateSession, Input};
+    // let mut client = XrpcReqwestClient::new(host);
     let session = client
-        .create_session(Input {
+        .service
+        .com
+        .atproto
+        .server
+        .create_session(atrium_api::com::atproto::server::create_session::Input {
             identifier,
             password,
         })
         .await?;
-    client.set_auth(session.access_jwt);
+
+    let mut xrpc_client = ReqwestClient::new(host.clone());
+    xrpc_client.set_auth_token(Some(session.access_jwt));
+    let client = AtpServiceClient::new(xrpc_client);
+
+    // xrpc_client.set_auth_token(Some(session.access_jwt.clone()));
+    // println!("{}", session.access_jwt);
+
+    // client.set_auth(session.access_jwt);
+
     match command {
         Command::CreateRecord(record) => {
-            use atrium_api::com::atproto::repo::create_record::{CreateRecord, Input};
-            use atrium_api::com::atproto::repo::get_record::{GetRecord, Parameters};
+            // use atrium_api::com::atproto::repo::create_record::{CreateRecord, Input};
+            // use atrium_api::com::atproto::repo::get_record::{GetRecord, Parameters};
             let input = match record {
                 CreateRecordCommand::Post(args) => {
                     use atrium_api::app::bsky::feed::post::{
@@ -155,7 +177,11 @@ async fn run(
                     let reply = if let Some(uri) = &args.reply {
                         let ru = RecordUri::try_from(uri.as_str())?;
                         let record = client
-                            .get_record(Parameters {
+                            .service
+                            .com
+                            .atproto
+                            .repo
+                            .get_record(atrium_api::com::atproto::repo::get_record::Parameters {
                                 cid: None,
                                 collection: ru.collection,
                                 repo: ru.did,
@@ -178,12 +204,13 @@ async fn run(
                     };
                     let embed = if let Some(image) = &args.image {
                         use atrium_api::app::bsky::embed::images::{Image, Main as EmbedImages};
-                        use atrium_api::com::atproto::repo::upload_blob::UploadBlob;
+                        // use atrium_api::com::atproto::repo::upload_blob::UploadBlob;
                         let mut images = Vec::with_capacity(image.len());
                         for path in image {
                             let mut input = Vec::new();
                             File::open(path)?.read_to_end(&mut input)?;
-                            let output = client.upload_blob(input).await?;
+                            let output = client.service.com.atproto.repo.upload_blob(input).await?;
+
                             images.push(Image {
                                 alt: path
                                     .canonicalize()?
@@ -192,6 +219,7 @@ async fn run(
                                     .to_string_lossy()
                                     .into(),
                                 image: output.blob,
+                                aspect_ratio: None,
                             })
                         }
                         Some(RecordEmbedEnum::AppBskyEmbedImagesMain(Box::new(
@@ -200,7 +228,7 @@ async fn run(
                     } else {
                         None
                     };
-                    Input {
+                    atrium_api::com::atproto::repo::create_record::Input {
                         collection: String::from("app.bsky.feed.post"),
                         record: Record::AppBskyFeedPost(Box::new(PostRecord {
                             created_at: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -209,6 +237,9 @@ async fn run(
                             facets: None,
                             reply,
                             text: args.text,
+                            labels: None,
+                            langs: None,
+                            tags: None,
                         })),
                         repo: session.did,
                         rkey: None,
@@ -220,14 +251,18 @@ async fn run(
                     use atrium_api::app::bsky::feed::repost::Record as RepostRecord;
                     let ru = RecordUri::try_from(args.uri.as_str())?;
                     let record = client
-                        .get_record(Parameters {
+                        .service
+                        .com
+                        .atproto
+                        .repo
+                        .get_record(atrium_api::com::atproto::repo::get_record::Parameters {
                             cid: None,
                             collection: ru.collection,
                             repo: ru.did,
                             rkey: ru.rkey,
                         })
                         .await?;
-                    Input {
+                    atrium_api::com::atproto::repo::create_record::Input {
                         collection: String::from("app.bsky.feed.repost"),
                         record: Record::AppBskyFeedRepost(Box::new(RepostRecord {
                             created_at: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -246,14 +281,18 @@ async fn run(
                     use atrium_api::app::bsky::feed::like::Record as LikeRecord;
                     let ru = RecordUri::try_from(args.uri.as_str())?;
                     let record = client
-                        .get_record(Parameters {
+                        .service
+                        .com
+                        .atproto
+                        .repo
+                        .get_record(atrium_api::com::atproto::repo::get_record::Parameters {
                             cid: None,
                             collection: ru.collection,
                             repo: ru.did,
                             rkey: ru.rkey,
                         })
                         .await?;
-                    Input {
+                    atrium_api::com::atproto::repo::create_record::Input {
                         collection: String::from("app.bsky.feed.like"),
                         record: Record::AppBskyFeedLike(Box::new(LikeRecord {
                             created_at: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -270,7 +309,7 @@ async fn run(
                 }
                 CreateRecordCommand::Block(args) => {
                     use atrium_api::app::bsky::graph::block::Record as BlockRecord;
-                    Input {
+                    atrium_api::com::atproto::repo::create_record::Input {
                         collection: String::from("app.bsky.graph.block"),
                         record: Record::AppBskyGraphBlock(Box::new(BlockRecord {
                             created_at: Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -283,18 +322,36 @@ async fn run(
                     }
                 }
             };
-            print(client.create_record(input).await?, debug)?;
+            print(
+                client.service.com.atproto.repo.create_record(input).await?,
+                debug,
+            )?;
         }
         Command::CreateAppPassword { name } => {
-            use atrium_api::com::atproto::server::create_app_password::{CreateAppPassword, Input};
-            print(client.create_app_password(Input { name }).await?, debug)?
+            // use atrium_api::com::atproto::server::create_app_password::{CreateAppPassword, Input};
+            print(
+                client
+                    .service
+                    .com
+                    .atproto
+                    .server
+                    .create_app_password(
+                        atrium_api::com::atproto::server::create_app_password::Input { name },
+                    )
+                    .await?,
+                debug,
+            )?
         }
         Command::DeleteRecord { uri } => {
-            use atrium_api::com::atproto::repo::delete_record::{DeleteRecord, Input};
+            // use atrium_api::com::atproto::repo::delete_record::{DeleteRecord, Input};
             let ru = RecordUri::try_from(uri.as_str())?;
             print(
                 client
-                    .delete_record(Input {
+                    .service
+                    .com
+                    .atproto
+                    .repo
+                    .delete_record(atrium_api::com::atproto::repo::delete_record::Input {
                         collection: ru.collection,
                         repo: ru.did,
                         rkey: ru.rkey,
@@ -306,14 +363,21 @@ async fn run(
             )?
         }
         Command::GetSession => {
-            use atrium_api::com::atproto::server::get_session::GetSession;
-            print(client.get_session().await?, debug)?
+            // use atrium_api::com::atproto::server::get_session::GetSession;
+            print(
+                client.service.com.atproto.server.get_session().await?,
+                debug,
+            )?
         }
         Command::GetProfile { actor } => {
-            use atrium_api::app::bsky::actor::get_profile::{GetProfile, Parameters};
+            // use atrium_api::app::bsky::actor::get_profile::{GetProfile, Parameters};
             print(
                 client
-                    .get_profile(Parameters {
+                    .service
+                    .app
+                    .bsky
+                    .actor
+                    .get_profile(atrium_api::app::bsky::actor::get_profile::Parameters {
                         actor: actor.unwrap_or(session.did),
                     })
                     .await?,
@@ -321,11 +385,15 @@ async fn run(
             )?
         }
         Command::GetRecord { uri, cid } => {
-            use atrium_api::com::atproto::repo::get_record::{GetRecord, Parameters};
+            // use atrium_api::com::atproto::repo::get_record::{GetRecord, Parameters};
             let ru = RecordUri::try_from(uri.as_str())?;
             print(
                 client
-                    .get_record(Parameters {
+                    .service
+                    .com
+                    .atproto
+                    .repo
+                    .get_record(atrium_api::com::atproto::repo::get_record::Parameters {
                         cid,
                         collection: ru.collection,
                         repo: ru.did,
@@ -336,10 +404,14 @@ async fn run(
             )?
         }
         Command::GetTimeline => {
-            use atrium_api::app::bsky::feed::get_timeline::{GetTimeline, Parameters};
+            // use atrium_api::app::bsky::feed::get_timeline::{GetTimeline, Parameters};
             print(
                 client
-                    .get_timeline(Parameters {
+                    .service
+                    .app
+                    .bsky
+                    .feed
+                    .get_timeline(atrium_api::app::bsky::feed::get_timeline::Parameters {
                         algorithm: None,
                         cursor: None,
                         limit: None,
@@ -349,10 +421,14 @@ async fn run(
             )?
         }
         Command::GetFollows { actor } => {
-            use atrium_api::app::bsky::graph::get_follows::{GetFollows, Parameters};
+            // use atrium_api::app::bsky::graph::get_follows::{GetFollows, Parameters};
             print(
                 client
-                    .get_follows(Parameters {
+                    .service
+                    .app
+                    .bsky
+                    .graph
+                    .get_follows(atrium_api::app::bsky::graph::get_follows::Parameters {
                         actor: actor.unwrap_or(session.did),
                         cursor: None,
                         limit: None,
@@ -362,10 +438,14 @@ async fn run(
             )?
         }
         Command::GetFollowers { actor } => {
-            use atrium_api::app::bsky::graph::get_followers::{GetFollowers, Parameters};
+            // use atrium_api::app::bsky::graph::get_followers::{GetFollowers, Parameters};
             print(
                 client
-                    .get_followers(Parameters {
+                    .service
+                    .app
+                    .bsky
+                    .graph
+                    .get_followers(atrium_api::app::bsky::graph::get_followers::Parameters {
                         actor: actor.unwrap_or(session.did),
                         cursor: None,
                         limit: None,
@@ -375,32 +455,49 @@ async fn run(
             )?
         }
         Command::GetAuthorFeed { author } => {
-            use atrium_api::app::bsky::feed::get_author_feed::{GetAuthorFeed, Parameters};
+            // use atrium_api::app::bsky::feed::get_author_feed::{GetAuthorFeed, Parameters};
             print(
                 client
-                    .get_author_feed(Parameters {
+                    .service
+                    .app
+                    .bsky
+                    .feed
+                    .get_author_feed(atrium_api::app::bsky::feed::get_author_feed::Parameters {
                         actor: author.unwrap_or(session.did),
                         cursor: None,
                         limit: None,
+                        filter: None,
                     })
                     .await?,
                 debug,
             )?
         }
         Command::GetPostThread { uri } => {
-            use atrium_api::app::bsky::feed::get_post_thread::{GetPostThread, Parameters};
+            // use atrium_api::app::bsky::feed::get_post_thread::{GetPostThread, Parameters};
             print(
                 client
-                    .get_post_thread(Parameters { depth: None, uri })
+                    .service
+                    .app
+                    .bsky
+                    .feed
+                    .get_post_thread(atrium_api::app::bsky::feed::get_post_thread::Parameters {
+                        depth: None,
+                        uri,
+                        parent_height: None,
+                    })
                     .await?,
                 debug,
             )?
         }
         Command::GetLikes { uri } => {
-            use atrium_api::app::bsky::feed::get_likes::{GetLikes, Parameters};
+            // use atrium_api::app::bsky::feed::get_likes::{GetLikes, Parameters};
             print(
                 client
-                    .get_likes(Parameters {
+                    .service
+                    .app
+                    .bsky
+                    .feed
+                    .get_likes(atrium_api::app::bsky::feed::get_likes::Parameters {
                         cid: None,
                         cursor: None,
                         limit: None,
@@ -411,10 +508,14 @@ async fn run(
             )?
         }
         Command::GetBlocks => {
-            use atrium_api::app::bsky::graph::get_blocks::{GetBlocks, Parameters};
+            // use atrium_api::app::bsky::graph::get_blocks::{GetBlocks, Parameters};
             print(
                 client
-                    .get_blocks(Parameters {
+                    .service
+                    .app
+                    .bsky
+                    .graph
+                    .get_blocks(atrium_api::app::bsky::graph::get_blocks::Parameters {
                         cursor: None,
                         limit: None,
                     })
@@ -423,27 +524,53 @@ async fn run(
             )?
         }
         Command::ListNotifications => {
-            use atrium_api::app::bsky::notification::list_notifications::{
-                ListNotifications, Parameters,
-            };
+            // use atrium_api::app::bsky::notification::list_notifications::{
+            //     ListNotifications, Parameters,
+            // };
             print(
                 client
-                    .list_notifications(Parameters {
-                        cursor: None,
-                        limit: None,
-                        seen_at: None,
-                    })
+                    .service
+                    .app
+                    .bsky
+                    .notification
+                    .list_notifications(
+                        atrium_api::app::bsky::notification::list_notifications::Parameters {
+                            cursor: None,
+                            limit: None,
+                            seen_at: None,
+                        },
+                    )
                     .await?,
                 debug,
             )?
         }
         Command::ListAppPasswords => {
-            use atrium_api::com::atproto::server::list_app_passwords::ListAppPasswords;
-            print(client.list_app_passwords().await?, debug)?
+            // use atrium_api::com::atproto::server::list_app_passwords::ListAppPasswords;
+            print(
+                client
+                    .service
+                    .com
+                    .atproto
+                    .server
+                    .list_app_passwords()
+                    .await?,
+                debug,
+            )?
         }
         Command::RevokeAppPassword { name } => {
-            use atrium_api::com::atproto::server::revoke_app_password::{Input, RevokeAppPassword};
-            print(client.revoke_app_password(Input { name }).await?, debug)?
+            // use atrium_api::com::atproto::server::revoke_app_password::{Input, RevokeAppPassword};
+            print(
+                client
+                    .service
+                    .com
+                    .atproto
+                    .server
+                    .revoke_app_password(
+                        atrium_api::com::atproto::server::revoke_app_password::Input { name },
+                    )
+                    .await?,
+                debug,
+            )?
         }
     }
     Ok(())
