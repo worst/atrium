@@ -63,6 +63,10 @@ where
     fn host(&self) -> &str {
         self.xrpc.host()
     }
+
+    fn auth(&self, is_refresh: bool) -> Option<String> {
+        self.xrpc.auth(is_refresh)
+    }
 }
 
 impl<T> AtpService for AtpServiceWrapper<T> where T: XrpcClient + Send + Sync {}
